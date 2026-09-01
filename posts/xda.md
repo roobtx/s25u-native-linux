@@ -149,7 +149,19 @@ ulimit -l unlimited
 | `--protected-vm-without-firmware` | Firmware refuses the VM (`Failed to start VM: -19`) |
 | `ulimit -l unlimited` | `Out of memory (os error 12)`, `Failed to allocate parcel for DTB: -12` |
 | `8250.nr_uarts=4` | `/dev/ttyS0` never appears → `Failed to set up standard input` |
-| `systemd.mask=serial-getty@ttyS0.service` | Random-looking crash: `unknown gh exit reason: 3` |
+| `systemd.mask=serial-getty@ttyS0.service` | getty fights the debug shell over the tty |
+
+And one thing that isn't a flag but matters more than any of them — **defragment host memory
+before launching**:
+
+```bash
+sync; echo 3 > /proc/sys/vm/drop_caches; echo 1 > /proc/sys/vm/compact_memory
+```
+
+plus crosvm's `--hugepages`. Skip it and you get `unknown gh exit reason: 3` at the end of
+boot roughly every time; my measured rate was **0/5 without it, 5/5 with it**. A protected VM
+needs large contiguous host pages and a phone that's been up for hours has none
+(`/proc/buddyinfo` shows zeros from order 6 up). `linuxvm` does this for you.
 
 ---
 
@@ -246,9 +258,10 @@ Full details with raw logs in the repo's `docs/dead-ends.md`.
 ## Known limitations
 
 - Root is temporary; a reboot ends the party until you re-root.
-- `--mem 2048 --cpus 2` is what I verified stable (125 s soak, zero crashes). Larger configs
-  boot but I haven't proven them stable — the guide author runs 4096/4 on a Y700, so it may
-  be device/firmware dependent. Try it and report back.
+- `--mem 2048 --cpus 2` is the verified-stable config **when combined with the memory
+  compaction above**. 4096 MiB still crashes even with compaction (2/2 here), so 2048 is the
+  current ceiling. The guide author runs 4096/4 on a Y700, so this may be device/firmware
+  dependent — try it and report back.
 - Serial console only. Networking needs a tap device; display needs virtio-gpu plumbing.
   Both are crosvm work, not firmware restrictions.
 - `--rwdisk` writes to the image. Back up `root_part` if you want a pristine copy.

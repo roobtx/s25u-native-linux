@@ -40,6 +40,27 @@ root@localhost:/# uname -r
 
 ---
 
+## Compatibility: this is not Samsung-specific
+
+Nothing here is device-specific — what matters is **the hypervisor baked into the SoC**. The
+disk image is generic (`ferrochrome/aarch64/...`, no device name anywhere) and the Terminal
+app ships in a mainline APEX, identical on every phone.
+
+| SoC | Status |
+|---|---|
+| **Snapdragon 8 Elite** | ✅ This method applies. Confirmed on: Galaxy S25 Ultra (this repo), Lenovo Legion Y700 gen4 ([original guide](https://github.com/polygraphene/gunyah-on-sd-guide)), OnePlus 13T (same errors reported). **Xiaomi 15 / 15 Pro / 15 Ultra use the same chip.** |
+| Snapdragon 8 Gen 2 / Gen 3 | ⚠️ `--protected-vm-without-firmware` does not work there; you need the pvmfw route — see [PVMFW.md](https://github.com/polygraphene/gunyah-on-sd-guide/blob/main/PVMFW.md) |
+| Dimensity 9400+ / Exynos / Pixel (Tensor) | You don't need any of this — those are KVM/pKVM, where the stock Terminal app just works |
+
+**Devices with an unlockable bootloader (Xiaomi and friends) have it easier than this one:**
+they can run Magisk/KernelSU for *permanent* root, whereas a US Samsung is limited to
+temporary root that dies on reboot.
+
+Three requirements: a Snapdragon 8 Elite, root, and `/dev/gunyah` plus the
+`com.android.virt` APEX (present on Android 15/16).
+
+---
+
 ## Environment and prerequisites
 
 Verified in September 2026 on:
@@ -168,9 +189,39 @@ ERROR crosvm::sys::linux::vcpu] vcpu hit unknown error: Invalid argument (os err
 `gh exit reason 3` is `GUNYAH_VCPU_EXIT_PAGE_FAULT`, an exit crosvm's Gunyah backend doesn't
 implement.
 
-**This crash is deeply misleading** — it looks exactly like running out of memory. I spent
-an hour bisecting RAM sizes and vCPU counts convinced I'd found a hypervisor memory ceiling.
-There is no ceiling. Mask the getty and 2 GB runs for 125 seconds with zero crashes.
+**This crash is deeply misleading** — it looks exactly like running out of memory. Masking
+the getty helps a lot, but **it is not the whole story**. See item 5.
+
+### 5. Defragment host memory before booting (the most important one, and the least obvious)
+
+**Without this the failure rate is close to 100%.** I originally shipped only the first four
+items, got one 125-second crash-free run, and called it stable. Repeating the test gave
+**0 out of 5**.
+
+The real cause is **host memory fragmentation**. A protected VM needs large contiguous
+physical pages, and after a phone has been up for hours the high-order blocks are gone:
+
+```
+before /proc/buddyinfo:  45304 29391 13255  2394   219    45     0    0   0  0   0
+                                                                 ^ nothing at order 6+
+after:                   80388 41397 20945  9304  2924  1738   694  273  61  0  74
+```
+
+So before launching:
+
+```bash
+sync
+echo 3 > /proc/sys/vm/drop_caches
+echo 1 > /proc/sys/vm/compact_memory
+```
+
+plus crosvm's `--hugepages`. With this step: **0/5 → 5/5**, including the run with a NIC
+attached. `linuxvm` does it for you.
+
+> This is almost certainly why someone on a OnePlus 13T (also Snapdragon 8 Elite) hit the
+> identical error and
+> [gave up](https://github.com/lfdevs/run-linux-on-android-guide/discussions/1) — they
+> suspected memory too, but never tried compaction.
 
 ---
 
@@ -201,11 +252,11 @@ Which points at the answer: **take the protected path, but don't let pvmfw inspe
 ## Known limitations
 
 - **Root is a prerequisite** and it dies on reboot. Re-root to use this again.
-- **`--mem 2048 --cpus 2` is what I verified stable** (125-second soak, zero crashes).
-  Larger configurations boot but I haven't proven them stable — they hit the Gunyah
-  page-fault exit more readily. The author of the
-  [original guide](https://github.com/polygraphene/gunyah-on-sd-guide) runs 4096/4 stably on
-  a Lenovo Y700 gen4, so this may be device- or firmware-dependent. Worth testing yourself.
+- **`--mem 2048 --cpus 2` is the verified-stable configuration**, provided you do the memory
+  compaction from item 5. 4096 MiB still crashes even with compaction (2/2 failed here), so
+  2048 is the current ceiling. The author of the
+  [original guide](https://github.com/polygraphene/gunyah-on-sd-guide) runs 4096/4 on a
+  Lenovo Y700 gen4, so this may be device- or firmware-dependent.
 - **Serial console only.** No networking, no display. Networking needs a tap device (AVF uses
   `vmnic`); a display needs virtio-gpu plumbing. Both are crosvm work, not firmware
   restrictions.

@@ -225,21 +225,61 @@ Debian reaches `graphical.target` and then dies with `unknown gh exit reason: 3`
 with 2 vCPUs survived; 2048/4, 4096/2, 6144/2 and 8192/2 all died. Obvious conclusion:
 hypervisor memory ceiling.
 
-Obvious conclusion was wrong. The escape sequences immediately before every crash were
-terminal-size probes — two processes negotiating on one tty. `serial-getty` versus
-`systemd.debug_shell`. Mask the getty and the "memory ceiling" disappears.
+Obvious conclusion was wrong — twice, as it turned out.
 
-Also checked, since it's the natural suspicion on Samsung: is Android's low-memory killer
-doing this? No. Zero `lmkd` entries in logcat, and the crash is crosvm's own vCPU thread
-returning an error, not a signal.
+The escape sequences immediately before every crash were terminal-size probes: two processes
+negotiating on one tty, `serial-getty` versus `systemd.debug_shell`. Masking the getty helped
+a lot. I ran a 125-second soak, saw zero crashes, and declared victory.
 
-### Log 7 — Soak test
+Then I re-ran the same command and it died in four seconds. And again. **Five out of five.**
+The 125-second run had been luck, and I'd published it as a stability claim.
 
-125 seconds, zero crashes, shell responsive at 95 s, `poweroff` shuts down cleanly.
+### Log 7 — What was actually killing it
+
+Not the getty. Not Android's low-memory killer either — zero `lmkd` entries in logcat, and
+the crash is crosvm's own vCPU thread returning an error rather than dying to a signal.
+
+It's **host memory fragmentation**. A protected VM needs large contiguous physical pages, and
+a phone that's been up for hours has none left:
 
 ```
-root@localhost:/# uptime
- 17:46:01 up 1 min,  0 users,  load average: 0.00, 0.00, 0.00
+/proc/buddyinfo:  45304 29391 13255  2394   219    45     0    0   0  0   0
+                                                          ^ nothing at order 6 or above
 ```
+
+Three lines before launching, plus crosvm's `--hugepages`:
+
+```bash
+sync
+echo 3 > /proc/sys/vm/drop_caches
+echo 1 > /proc/sys/vm/compact_memory
+```
+
+```
+after:            80388 41397 20945  9304  2924  1738   694  273  61  0  74
+```
+
+**0 out of 5 became 5 out of 5**, including a run with a NIC attached. Same binary, same
+kernel command line, same everything — only the host's free-page distribution changed.
+
+Someone on a OnePlus 13T — same Snapdragon 8 Elite — hit the identical three-line error,
+[suspected memory, and gave up](https://github.com/lfdevs/run-linux-on-android-guide/discussions/1).
+They were right about the cause and one `compact_memory` away from it working.
+
+### Log 8 — Why the stock app still can't be rescued
+
+With root you can walk the official Terminal app most of the way: flip `protected` to true in
+its config and the framework check passes, `chcon` the image files off `privapp_data_file` and
+the label check passes, set `network: false` (protected VMs don't support virtio-net yet) and
+`createVm` succeeds. virtmgr genuinely starts a protected VM.
+
+Then crosvm dies on `failed to register irq fd: File exists`. The app asks for four
+`--input` devices, a `--virtio-snd`, three virtio-consoles and two serials. Gunyah demands a
+unique label per irqfd; KVM happily lets several share a GSI. That device list is fine on a
+Pixel and impossible here.
+
+Which is the whole story in miniature: nothing about the *image* is device-specific — the
+ferrochrome tarball is generic `aarch64`, the app ships in a mainline APEX. The only variable
+is which hypervisor the silicon runs.
 
 Next: networking, then a display.

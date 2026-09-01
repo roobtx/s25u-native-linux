@@ -39,6 +39,24 @@ root@localhost:/# uname -r
 
 ---
 
+## 适用范围：不止这一台手机
+
+方法本身跟机型无关，取决于**芯片的 hypervisor**。下载的镜像也是通用的
+（`ferrochrome/aarch64/...`，没有机型标识），Terminal 应用是 mainline 模块，全设备同一份。
+
+| 芯片 | 情况 |
+|---|---|
+| **骁龙 8 Elite** | ✅ 本方法适用。已验证：三星 S25 Ultra（本文）、联想 Y700 gen4（[原指南](https://github.com/polygraphene/gunyah-on-sd-guide)）、一加 13T（同款报错）。**小米 15 / 15 Pro / 15 Ultra 同为这颗芯片** |
+| 骁龙 8 Gen 2 / Gen 3 | ⚠️ `--protected-vm-without-firmware` 在这两代上不生效，需走 pvmfw 路线，见原指南的 [PVMFW.md](https://github.com/polygraphene/gunyah-on-sd-guide/blob/main/PVMFW.md) |
+| 天玑 9400+ / Exynos / Pixel(Tensor) | 用不上本方法 —— 它们是 KVM/pKVM 系，官方 Terminal 应用本来就能用 |
+
+**能解锁 bootloader 的机型（小米等）比本机更有优势**：可以装 Magisk/KernelSU 拿**永久 root**，
+不像美版三星只能临时 root、一重启就失效。
+
+需要的条件只有三个：骁龙 8 Elite、root、系统里有 `/dev/gunyah` 与 `com.android.virt` APEX。
+
+---
+
 ## 环境与前提
 
 本方案在以下环境验证通过（2026-09）：
@@ -157,8 +175,35 @@ ERROR crosvm::sys::linux::vcpu] vcpu hit unknown error: Invalid argument (os err
 
 `gh exit reason 3` 是 Gunyah 的 `GUNYAH_VCPU_EXIT_PAGE_FAULT`，crosvm 没实现处理就直接死。
 
-**这个崩溃极具误导性** —— 它长得像内存不足，我一度以为是内存上限问题（见 dead-ends），
-实际上和内存无关，屏蔽 getty 之后 2048MB 跑 125 秒零崩溃。
+**这个崩溃极具误导性** —— 它长得像内存不足。屏蔽 getty 能显著改善，但**它不是全部原因**，
+见下面第 5 条。
+
+### 5. 启动前整理宿主内存（最关键，也最反直觉）
+
+**没有这一步，失败率接近 100%。** 我最初只做了前四条，跑出一次 125 秒零崩溃就下了"稳定"的结论；
+重复测试才发现是 **0/5**。
+
+根因是**宿主内存碎片**。受保护 VM 需要大块连续物理内存，而手机用几小时后高阶内存块会耗尽：
+
+```
+整理前 /proc/buddyinfo：45304 29391 13255  2394   219    45     0    0   0  0   0
+                                                              ↑ order 6 以上全是 0
+整理后：                80388 41397 20945  9304  2924  1738   694  273  61  0  74
+```
+
+所以启动前必须：
+
+```bash
+sync
+echo 3 > /proc/sys/vm/drop_caches
+echo 1 > /proc/sys/vm/compact_memory
+```
+
+再配合 crosvm 的 `--hugepages`。加上这一步后：**0/5 → 5/5**（含带网卡那次）。`linuxvm` 已自动执行。
+
+> 这也是为什么有人在一加 13T（同为骁龙 8 Elite）上遇到一模一样的报错后
+> [放弃了](https://github.com/lfdevs/run-linux-on-android-guide/discussions/1) —— 他也怀疑是内存，
+> 但没找到"整理碎片"这一步。
 
 ---
 
@@ -187,8 +232,8 @@ ERROR crosvm::sys::linux::vcpu] vcpu hit unknown error: Invalid argument (os err
 ## 已知限制
 
 - **root 是前提**。重启即失效，需重新获取。
-- **稳定配置是 `--mem 2048 --cpus 2`**。更大内存/更多核我这边没验证稳定（能启动，但更容易碰到
-  Gunyah 的 page-fault 退出）。[原始指南](https://github.com/polygraphene/gunyah-on-sd-guide)
+- **稳定配置是 `--mem 2048 --cpus 2`**，前提是做了上面第 5 条的内存整理。4096 MiB 即使整理过内存
+  仍会崩（实测 2/2 失败），所以 2048 是目前的上限。[原始指南](https://github.com/polygraphene/gunyah-on-sd-guide)
   的作者在 Lenovo Y700 gen4 上用 4096/4 是稳的，可能与机型/固件有关，值得自己试。
 - **目前只有串口控制台**，没有图形界面、没有网络。网络需要 tap 设备（AVF 用 `vmnic`），
   图形需要 virtio-gpu + 显示后端，都还没搭。
