@@ -327,3 +327,53 @@ gunyah
 
 KVM is compiled in, but **Gunyah occupies EL2**, so the kernel runs at EL1 and KVM can never
 initialise. Gunyah is the only game in town here.
+
+---
+
+## Appendix: how far the stock app can be pushed (and why it still loses)
+
+With root, the official Terminal app can be walked almost all the way. Full measured record:
+
+| Gate | What I did | Result |
+|---|---|---|
+| ① Framework check | `"protected": true` in its config | ✅ passes (the `UnsupportedOperationException` disappears) |
+| ② SELinux label | `chcon u:object_r:shell_data_file:s0` on the images | ✅ passes (otherwise `Label u:object_r:privapp_data_file:s0 is not allowed`) |
+| ③ pVM networking | `"network": false` | ✅ passes (otherwise `Network feature is not supported for pVM yet`) |
+| ④ **VM actually created and started** | — | ✅ `Protected virtual machine "debian" (cid: 2076) created / started` |
+| ⑤ IRQ registration | — | ❌ `failed to register irq fd: File exists` |
+
+Gate ⑤ is the wall, and it's a **device-count limit**. The threshold is sharp:
+
+```
+minimal config + 6 extra virtio-consoles  → boots
+minimal config + 8 extra                  → boots
+minimal config + 9 extra                  → boots
+minimal config + 10 extra                 → failed to register irq fd
+```
+
+So roughly **11–12 virtio devices is the ceiling**. The stock app asks for about 13:
+
+```
+4 × --input   (touch / keyboard / mouse / switches)
+1 × --virtio-snd
+3 × virtio-console + 2 × hardware=serial
+2 × --block
+1 × vsock + 1 × --android-display-service
+```
+
+**It overshoots by one or two devices and that is enough.** Gunyah requires a unique label per
+irqfd; **KVM lets several irqfds share a GSI**. The exact same device list is unremarkable on
+a Pixel.
+
+**And those devices cannot be turned off.** The app's `ConfigJson` really does have
+`input` / `audio` / `display` / `gpu` fields (`ConfigJson$InputJson`, `ConfigJson$AudioJson`,
+`ConfigJson$DisplayJson` are all visible in the DEX) — but setting every one of them to false
+changed nothing: `--input` ×4 and `--virtio-snd` were still passed. They're hardcoded in the
+app. Removing them means patching the APK or crosvm, and both live inside a **dm-verity
+protected, read-only APEX** — a modified copy fails signature verification and won't load.
+
+> A common misconception worth clearing up: **Xiaomi 15 and other Snapdragon phones also
+> "have" this app, and it also doesn't work for them.** It ships in a mainline APEX on every
+> Android 16 device; whether it runs depends on the SoC. Only Tensor G1+, Dimensity 9400+ and
+> Exynos 2500 support it
+> ([Android Authority](https://www.androidauthority.com/snapdragon-chips-android-linux-terminal-3608648/)).

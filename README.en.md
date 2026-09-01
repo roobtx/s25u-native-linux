@@ -48,7 +48,7 @@ app ships in a mainline APEX, identical on every phone.
 
 | SoC | Status |
 |---|---|
-| **Snapdragon 8 Elite** | ✅ This method applies. Confirmed on: Galaxy S25 Ultra (this repo), Lenovo Legion Y700 gen4 ([original guide](https://github.com/polygraphene/gunyah-on-sd-guide)), OnePlus 13T (same errors reported). **Xiaomi 15 / 15 Pro / 15 Ultra use the same chip.** |
+| **Snapdragon 8 Elite** | ✅ This method applies. Confirmed on: Galaxy S25 Ultra (this repo), Lenovo Legion Y700 gen4 ([original guide](https://github.com/polygraphene/gunyah-on-sd-guide)), OnePlus 13T (same errors reported). **The Xiaomi 15 series uses the same chip — those phones ship the stock Terminal app too, and it doesn't work for them either** ([appendix](docs/dead-ends.en.md)). |
 | Snapdragon 8 Gen 2 / Gen 3 | ⚠️ `--protected-vm-without-firmware` does not work there; you need the pvmfw route — see [PVMFW.md](https://github.com/polygraphene/gunyah-on-sd-guide/blob/main/PVMFW.md) |
 | Dimensity 9400+ / Exynos / Pixel (Tensor) | You don't need any of this — those are KVM/pKVM, where the stock Terminal app just works |
 

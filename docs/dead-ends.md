@@ -305,3 +305,49 @@ gunyah
 
 KVM 编译进内核了，但 **Gunyah 占着 EL2**，内核只能跑在 EL1，KVM 无法初始化。
 所以别指望用 KVM，只能走 Gunyah。
+
+---
+
+## 附:官方应用能被推进到哪一步（以及为什么最终仍不行）
+
+有 root 的话，官方 Terminal 应用可以被一路推到**只差一步**。完整实测记录：
+
+| 关卡 | 做法 | 结果 |
+|---|---|---|
+| ① 框架门禁 | 配置里 `"protected": true` | ✅ 过（`UnsupportedOperationException` 消失） |
+| ② SELinux 标签 | `chcon u:object_r:shell_data_file:s0` 镜像文件 | ✅ 过（否则 `Label u:object_r:privapp_data_file:s0 is not allowed`） |
+| ③ pVM 不支持网络 | 配置里 `"network": false` | ✅ 过（否则 `Network feature is not supported for pVM yet`） |
+| ④ **VM 真的被创建并启动** | — | ✅ `Protected virtual machine "debian" (cid: 2076) created / started` |
+| ⑤ 中断号冲突 | — | ❌ `failed to register irq fd: File exists` |
+
+第 ⑤ 关无解。原因是**设备数量超限**，实测阈值很精确：
+
+```
+最小配置 + 额外 6 个 virtio-console  → 正常启动
+最小配置 + 额外 8 个                 → 正常启动
+最小配置 + 额外 9 个                 → 正常启动
+最小配置 + 额外 10 个                → failed to register irq fd
+```
+
+也就是**约 11~12 个虚拟设备到顶**。而官方应用要求约 13 个：
+
+```
+4 × --input（触摸/键盘/鼠标/开关）
+1 × --virtio-snd（声卡）
+3 × virtio-console + 2 × hardware=serial
+2 × --block
+1 × vsock + 1 × --android-display-service
+```
+
+**只超了一两个，却过不去。** 根因是 Gunyah 要求每个 irqfd 有唯一标签，而 **KVM 允许多个 irqfd 共用同一个 GSI** —— 同样的设备清单在 Pixel 上毫无问题。
+
+**而且这些设备关不掉。** 应用的 `ConfigJson` 确实支持 `input` / `audio` / `display` / `gpu` 字段
+（从 DEX 里能看到 `ConfigJson$InputJson`、`ConfigJson$AudioJson`、`ConfigJson$DisplayJson`），
+但实测把它们全设成 false 之后，`--input` 和 `--virtio-snd` **一个都没少** —— 说明是应用代码里
+写死的，不受配置控制。要去掉只能改 APK 或 crosvm，而两者都在 **dm-verity 保护的只读 APEX 里**，
+改了签名过不了，应用根本加载不起来。
+
+> 顺带澄清一个常见误解：**小米 15 等骁龙机型同样"有"这个应用，但同样用不了。**
+> 它是 mainline 模块，每台 Android 16 设备都带；能否运行取决于芯片。
+> 目前只有 Tensor G1+、天玑 9400+、Exynos 2500 支持
+> （[Android Authority](https://www.androidauthority.com/snapdragon-chips-android-linux-terminal-3608648/)）。

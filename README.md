@@ -46,7 +46,7 @@ root@localhost:/# uname -r
 
 | 芯片 | 情况 |
 |---|---|
-| **骁龙 8 Elite** | ✅ 本方法适用。已验证：三星 S25 Ultra（本文）、联想 Y700 gen4（[原指南](https://github.com/polygraphene/gunyah-on-sd-guide)）、一加 13T（同款报错）。**小米 15 / 15 Pro / 15 Ultra 同为这颗芯片** |
+| **骁龙 8 Elite** | ✅ 本方法适用。已验证：三星 S25 Ultra（本文）、联想 Y700 gen4（[原指南](https://github.com/polygraphene/gunyah-on-sd-guide)）、一加 13T（同款报错）。**小米 15 系列同为这颗芯片 —— 它们同样装着官方 Terminal 应用，也同样用不了**，见 [dead-ends 附录](docs/dead-ends.md) |
 | 骁龙 8 Gen 2 / Gen 3 | ⚠️ `--protected-vm-without-firmware` 在这两代上不生效，需走 pvmfw 路线，见原指南的 [PVMFW.md](https://github.com/polygraphene/gunyah-on-sd-guide/blob/main/PVMFW.md) |
 | 天玑 9400+ / Exynos / Pixel(Tensor) | 用不上本方法 —— 它们是 KVM/pKVM 系，官方 Terminal 应用本来就能用 |
 
