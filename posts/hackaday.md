@@ -10,6 +10,10 @@ the firmware refuses the kind of VM it asks for. I got Debian 13 booting anyway,
 carrier-locked S25 Ultra, by going through the door that **is** open and taking the lock
 off from the inside.*
 
+![Debian 13 booting on a Galaxy S25 Ultra](https://raw.githubusercontent.com/roobtx/s25u-native-linux/main/screenshots/debian-boot.jpg)
+
+*Debian 13 finishing boot on a carrier-locked SM-S938U — systemd all green, `multi-user.target` reached, root shell at the bottom. Those are Termux's extra keys along the bottom: this is a phone.*
+
 ---
 
 ## Details

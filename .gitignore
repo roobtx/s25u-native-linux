@@ -2,3 +2,4 @@
 root_part
 vmlinuz
 *.img
+!screenshots/*

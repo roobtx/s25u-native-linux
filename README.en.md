@@ -6,6 +6,10 @@ Debian 13 (trixie) running as a **real virtual machine** — its own kernel, its
 a root shell — on a **carrier-locked Galaxy S25 Ultra (SM-S938U, Snapdragon 8 Elite)** whose
 bootloader can never be unlocked. Not a chroot. Not proot.
 
+![Debian 13 booting on a Galaxy S25 Ultra](screenshots/debian-boot.jpg)
+
+*Debian 13 finishing boot on an SM-S938U — systemd all green, `multi-user.target` reached, root shell at the bottom.*
+
 ```
 linuxvm: booting Debian 13  (2048 MiB, 2 vCPU) — 'poweroff' to exit
 ...

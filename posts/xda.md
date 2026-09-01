@@ -9,6 +9,10 @@ open, and `crosvm --protected-vm-without-firmware` uses it while skipping pvmfw'
 check. Result: Debian 13 with its own kernel, systemd and a root shell — on a **carrier-locked,
 never-unlockable SM-S938U**.
 
+![Debian 13 booting on a Galaxy S25 Ultra](https://raw.githubusercontent.com/roobtx/s25u-native-linux/main/screenshots/debian-boot.jpg)
+
+*Debian 13 finishing boot on a carrier-locked SM-S938U. Termux's extra key rows are visible at the bottom — this is running on the phone itself.*
+
 ---
 
 ## Disclaimer

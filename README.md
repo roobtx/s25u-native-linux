@@ -5,6 +5,10 @@
 在**锁 bootloader 的美版 Galaxy S25 Ultra（SM-S938U，骁龙 8 Elite）**上，跑起一个真正的
 **Debian 13 (trixie) 虚拟机** —— 独立内核、systemd、root shell，不是 chroot 也不是 proot。
 
+![Debian 13 在 Galaxy S25 Ultra 上启动](screenshots/debian-boot.jpg)
+
+*Debian 13 在 SM-S938U 上完成启动 —— systemd 全绿、`multi-user.target` 达成、底部是 root shell。*
+
 ```
 linuxvm: booting Debian 13  (2048 MiB, 2 vCPU) — 'poweroff' to exit
 ...
