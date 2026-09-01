@@ -1,0 +1,4 @@
+*.log
+root_part
+vmlinuz
+*.img

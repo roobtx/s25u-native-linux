@@ -1,0 +1,35 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# linuxvm — Debian 13 (trixie) in a REAL VM on Snapdragon, via Gunyah.
+#
+# Works by using the hypervisor's *protected* VM path (the only one this
+# device's TrustZone firmware provisions) while skipping pvmfw's AVB check:
+#   --protected-vm-without-firmware
+# Needs root (KernelSU/Magisk). Android's Linux Terminal app cannot do this
+# because it asks for a NON-protected VM, which the firmware refuses.
+#
+#   linuxvm                 boot; you land in a root shell on the serial console
+#   LINUXVM_MEM=2048        RAM in MiB (2048 verified stable; larger is untested/flaky)
+#   LINUXVM_CPUS=2          vCPUs   (2 verified stable)
+# Inside the VM:  poweroff   to shut down cleanly.
+set -u
+VMDIR=${LINUXVM_DIR:-/data/local/tmp/linuxvm}
+MEM=${LINUXVM_MEM:-2048}
+CPUS=${LINUXVM_CPUS:-2}
+CROSVM=${LINUXVM_CROSVM:-/apex/com.android.virt/bin/crosvm}
+
+command -v su >/dev/null 2>&1 || { echo "linuxvm: needs root (no su)" >&2; exit 1; }
+su -c "test -r $VMDIR/vmlinuz && test -r $VMDIR/root_part" 2>/dev/null || {
+  echo "linuxvm: need $VMDIR/vmlinuz and $VMDIR/root_part" >&2; exit 1; }
+
+echo "linuxvm: booting Debian 13  (${MEM} MiB, ${CPUS} vCPU) — 'poweroff' to exit" >&2
+exec su -c "
+ulimit -l unlimited          # kernel caps locked mem at 64K otherwise; VM won't start
+exec $CROSVM --log-level warn run \
+  --disable-sandbox --no-balloon \
+  --protected-vm-without-firmware --swiotlb 64 \
+  --serial type=stdout,hardware=serial,num=1,console=true,stdin=true,earlycon=true \
+  --params 'root=/dev/vda rw console=ttyS0 8250.nr_uarts=4 systemd.debug_shell=ttyS0 systemd.mask=serial-getty@ttyS0.service' \
+  --mem $MEM --cpus $CPUS \
+  --rwdisk $VMDIR/root_part \
+  $VMDIR/vmlinuz
+"
