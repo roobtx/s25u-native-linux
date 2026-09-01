@@ -40,6 +40,36 @@ root@localhost:/# uname -r
 
 ---
 
+## Do you actually want this? Read the table first
+
+Having gone through all of it, my own conclusion is: **this is the most *Linux* option, not the
+fastest one.** If your goal is simply "use a Linux toolchain on my phone", Termux is quicker and
+far less trouble.
+
+| Approach | What it really is | Performance | How "native" |
+|---|---|---|---|
+| **Termux** | Native Android processes, bionic libc | **Fastest CPU** — no virtualization layer at all | Lowest. It isn't Linux, it's Android userspace: no systemd, no root by default, syscalls constrained by SELinux |
+| **proot-distro** | Real distro rootfs, syscalls emulated via ptrace | 2–10× slower on syscall-heavy work; near-native for pure compute | Medium. Real Debian userspace, still Android's kernel |
+| **chroot** (needs root) | Real distro rootfs + real chroot | Near-native, no ptrace overhead | High. Real Debian userspace + Android kernel |
+| **This repo / DroidVM** | **Its own Linux kernel** + hardware virtualization | Near-native CPU, but **noticeably slower I/O** | **Highest** |
+
+**Three costs the VM cannot avoid** (all measured on this device):
+
+1. **Every DMA goes through the swiotlb bounce buffer** — the guest kernel reports it sized down
+   to 2 MB, so disk and network throughput sit well below a normal VM. That's structural to
+   protected VMs; there's no flag to fix it.
+2. **Memory is genuinely carved out** — giving the VM 2048 MB takes 2048 MB away from the phone,
+   unlike Termux or chroot which share.
+3. **No hardware access** — a VM can't see USB devices. If you want `termux-usb` to reach a
+   logic analyser or similar, that has to happen in Termux.
+
+**When the VM is actually worth it**: running Docker/containers, loading kernel modules,
+building or debugging kernels, wanting real isolation, or booting a different kernel entirely
+(even Windows). Outside of those, Termux — plus chroot if you have root — is usually the better
+answer.
+
+---
+
 ## Compatibility: this is not Samsung-specific
 
 Nothing here is device-specific — what matters is **the hypervisor baked into the SoC**. The

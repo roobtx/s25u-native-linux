@@ -39,6 +39,30 @@ root@localhost:/# uname -r
 
 ---
 
+## 你真的需要这个吗？先看这张表
+
+我自己折腾完之后的结论是：**这是"最像 Linux"的方案，但不是性能最好的方案。**
+如果你的目标只是"在手机上用 Linux 工具链"，Termux 更快、更省事。
+
+| 方案 | 本质 | 性能 | 原生程度 |
+|---|---|---|---|
+| **Termux** | Android 原生进程，bionic libc | **CPU 最快** —— 零虚拟化层 | 最低。不是 Linux，是 Android 用户空间：无 systemd、默认无 root、syscall 受 SELinux 限制 |
+| **proot-distro** | 真发行版 rootfs，syscall 用 ptrace 模拟 | syscall 密集时慢 2~10 倍；纯计算接近原生 | 中。真 Debian 用户空间，内核仍是 Android 的 |
+| **chroot**（需 root） | 真发行版 rootfs + 真 chroot | 接近原生，无 ptrace 开销 | 较高。真 Debian 用户空间 + Android 内核 |
+| **本方案 / DroidVM** | **独立 Linux 内核** + 硬件虚拟化 | CPU 接近原生，但 **I/O 明显偏慢** | **最高** |
+
+**VM 的三个固有代价**（都是本机实测）：
+
+1. **所有 DMA 必须过 swiotlb 弹跳缓冲区** —— guest 内核日志显示它被调到只有 2 MB，
+   磁盘和网络吞吐因此明显低于普通虚拟机。这是受保护 VM 的结构性开销，改不掉。
+2. **内存是真切走的** —— 给 VM 2048 MB 就从手机里划走 2048 MB，不像 Termux/chroot 是共享的。
+3. **碰不到硬件** —— VM 里看不见 USB 设备。想用 `termux-usb` 访问逻辑分析仪之类的，只能在 Termux 做。
+
+**什么时候 VM 才值得**：需要跑 Docker/容器、加载内核模块、编译调试内核、要真正的隔离、
+或者想跑别的内核甚至 Windows。除此之外，Termux（有 root 的话再加 chroot）几乎总是更优。
+
+---
+
 ## 适用范围：不止这一台手机
 
 方法本身跟机型无关，取决于**芯片的 hypervisor**。下载的镜像也是通用的
