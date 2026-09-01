@@ -191,7 +191,22 @@ ERROR crosvm::sys::linux::vcpu] vcpu hit unknown error: Invalid argument (os err
 整理后：                80388 41397 20945  9304  2924  1738   694  273  61  0  74
 ```
 
-所以启动前必须：
+**最好的解法：装 [GH-Hugepage-Reserve](https://github.com/Droid-VM/gh-hugepage-reserve) 内核模块。**
+
+它挂钩 `__alloc_pages`、监视 Gunyah 的 VM 创建，直接从预留的 2 MiB 大页池供给内存 ——
+正是为这个问题而生的。内核日志一目了然：
+
+```
+gh_hugepage_reserve: hooked __alloc_pages
+gh_hugepage_reserve: watching for VM creation (gunyah_dev_vm_mgr_ioctl)
+gh_hugepage_reserve: pool ready: N x 2MB (target 1024)
+```
+
+实测**只靠它就 4/4 干净启动**，完全不需要清缓存。模块自带 ABI 预检（比对运行内核的 BTF 符号签名），
+本机 7 个符号全部匹配。它随 [DroidVM](https://github.com/Droid-VM/DroidVM) 一起分发，
+也可以单独装（KernelSU/Magisk 模块）。
+
+**退而求其次**（没装模块时），启动前手动整理：
 
 ```bash
 sync
@@ -199,7 +214,8 @@ echo 3 > /proc/sys/vm/drop_caches
 echo 1 > /proc/sys/vm/compact_memory
 ```
 
-再配合 crosvm 的 `--hugepages`。加上这一步后：**0/5 → 5/5**（含带网卡那次）。`linuxvm` 已自动执行。
+再配合 crosvm 的 `--hugepages`。这样也能 **0/5 → 5/5**，但代价是清空全系统页缓存，
+其他 App 会卡一阵。`linuxvm` 会自动检测模块：有就用模块，没有才退回这个办法。
 
 > 这也是为什么有人在一加 13T（同为骁龙 8 Elite）上遇到一模一样的报错后
 > [放弃了](https://github.com/lfdevs/run-linux-on-android-guide/discussions/1) —— 他也怀疑是内存，
@@ -226,6 +242,27 @@ echo 1 > /proc/sys/vm/compact_memory
 运行负载、干净关机，内核零错误。整套 crosvm / Gunyah 驱动 / TZ RM 通路都是好的。
 
 于是路就清楚了：**走受保护通道，但别让 pvmfw 检查签名。**
+
+---
+
+## 相关项目：DroidVM
+
+做到这一步之后我才发现 [Droid-VM/DroidVM](https://github.com/Droid-VM/DroidVM)（GPL-3.0，
+活跃开发中）—— 一个带图形界面的 Android 虚拟机管理器，把本仓库还缺的东西都做了：
+
+- **桌面图标入口**，不用开 Termux 敲命令
+- **虚拟网络**：自带虚拟交换机 `gvswitch` + `bridgedhcp`，NAT / DHCP / IPv4+IPv6
+- **图形显示**：VirGL / GfxStream / 2D 渲染 + 内置 VNC 客户端
+- 同一个组织还维护 [修改版 crosvm](https://github.com/Droid-VM/crosvm)、
+  [Gunyah 的 UEFI 固件](https://github.com/Droid-VM/edk2-gunyah)、
+  [Windows 半虚拟化驱动](https://github.com/Droid-VM/gunyah-guest-drivers-windows)
+- 正确识别本机：Gunyah ✓ / KVM ✗ / GenieZone ✗，SoC 显示 Qualcomm Snapdragon 8 Elite
+
+它同样用系统自带的 `/apex/com.android.virt/bin/crosvm`，配置存成 `vms.json` / `disks.json` /
+`networks.json`（设置里可导入导出）。
+
+**本仓库的价值在于把原理和坑讲清楚**；想要开箱即用的图形化方案，直接上 DroidVM。
+上面那个大页模块就是从它那里发现的。
 
 ---
 

@@ -207,7 +207,24 @@ before /proc/buddyinfo:  45304 29391 13255  2394   219    45     0    0   0  0  
 after:                   80388 41397 20945  9304  2924  1738   694  273  61  0  74
 ```
 
-So before launching:
+**The best fix is the [GH-Hugepage-Reserve](https://github.com/Droid-VM/gh-hugepage-reserve)
+kernel module.**
+
+It hooks `__alloc_pages`, watches for Gunyah VM creation, and serves the VM from a reserved
+pool of 2 MiB hugepages — it exists precisely for this problem. The kernel log says it plainly:
+
+```
+gh_hugepage_reserve: hooked __alloc_pages
+gh_hugepage_reserve: watching for VM creation (gunyah_dev_vm_mgr_ioctl)
+gh_hugepage_reserve: pool ready: N x 2MB (target 1024)
+```
+
+Measured **4/4 clean boots with the module alone**, no cache dropping at all. It ships with an
+ABI preflight that compares the running kernel's BTF symbol signatures against what the `.ko`
+expects (all 7 matched here). It ships with [DroidVM](https://github.com/Droid-VM/DroidVM) and
+can also be installed standalone as a KernelSU/Magisk module.
+
+**Fallback** (no module): defragment by hand before launching:
 
 ```bash
 sync
@@ -215,8 +232,9 @@ echo 3 > /proc/sys/vm/drop_caches
 echo 1 > /proc/sys/vm/compact_memory
 ```
 
-plus crosvm's `--hugepages`. With this step: **0/5 → 5/5**, including the run with a NIC
-attached. `linuxvm` does it for you.
+plus crosvm's `--hugepages`. That also takes it **0/5 → 5/5**, but it drops the entire page
+cache, so the rest of the phone is sluggish for a while. `linuxvm` detects the module and only
+falls back to this when it isn't loaded.
 
 > This is almost certainly why someone on a OnePlus 13T (also Snapdragon 8 Elite) hit the
 > identical error and
@@ -246,6 +264,29 @@ The Terminal app hardcodes `"protected": false`, so it always hits layer ③.
 with zero Gunyah errors. The entire crosvm / Gunyah driver / TrustZone RM chain is healthy.
 
 Which points at the answer: **take the protected path, but don't let pvmfw inspect the payload.**
+
+---
+
+## Related project: DroidVM
+
+Only after getting this far did I find [Droid-VM/DroidVM](https://github.com/Droid-VM/DroidVM)
+(GPL-3.0, actively developed) — a GUI virtual machine manager for Android that already covers
+everything this repo is missing:
+
+- **A launcher icon**, no Termux needed
+- **Virtual networking**: its own `gvswitch` virtual switch plus `bridgedhcp` — NAT, DHCP,
+  IPv4 and IPv6
+- **Graphics**: VirGL / GfxStream / 2D rendering with a built-in VNC client
+- The same org also maintains a [modified crosvm](https://github.com/Droid-VM/crosvm),
+  [UEFI firmware for Gunyah](https://github.com/Droid-VM/edk2-gunyah) and
+  [Windows paravirtualised drivers](https://github.com/Droid-VM/gunyah-guest-drivers-windows)
+- It identified this phone correctly: Gunyah ✓ / KVM ✗ / GenieZone ✗, SoC Snapdragon 8 Elite
+
+It uses the same stock `/apex/com.android.virt/bin/crosvm`, and stores its configuration as
+`vms.json` / `disks.json` / `networks.json` (importable/exportable from its settings).
+
+**This repo's value is explaining the mechanism and the traps**; if you want a ready-made
+graphical solution, go straight to DroidVM. The hugepage module above came from there.
 
 ---
 
