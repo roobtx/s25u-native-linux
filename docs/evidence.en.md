@@ -1,12 +1,10 @@
-# 关键日志证据（原文）
+# Raw log evidence
 
-*[English version](evidence.en.md)*
-
-保留原始输出，方便搜索比对。所有内容采集自 SM-S938U / Android 16 / One UI 8.0 / 2026-09。
+*[中文版 / Chinese version](evidence.md)*
 
 ---
 
-## A. 成功：Debian 13 启动并拿到 root shell
+## A. Success: Debian 13 boots and hands over a root shell
 
 ```
 linuxvm: booting Debian 13  (2048 MiB, 2 vCPU) — 'poweroff' to exit
@@ -39,11 +37,11 @@ root@localhost:/# uptime
 [   27.145134][    T1] reboot: Power down
 ```
 
-125 秒稳定性测试：`exit=124`（跑满超时未崩溃），`grep -c "unknown gh exit"` = **0**。
+125-second soak test: `exit=124` (ran to the timeout without dying), `grep -c "unknown gh exit"` = **0**.
 
 ---
 
-## B. 非保护 VM 被 TrustZone 拒绝
+## B. The non-protected VM is refused by TrustZone
 
 ```
 $ dmesg
@@ -51,7 +49,7 @@ $ dmesg
 [46560.872579] misc gunyah: Failed to start VM: -19
 ```
 
-crosvm 侧：
+On the crosvm side:
 ```
 [ERROR] crosvm] exiting with error 1: the architecture failed to build the vm
 Caused by:
@@ -59,7 +57,7 @@ Caused by:
 VM ended: StartFailed
 ```
 
-对照 —— 设备较多时更早撞在中断注册：
+For comparison — with more devices it fails earlier, at IRQ registration:
 ```
 [ERROR] crosvm] exiting with error 1: the architecture failed to build the vm
 Caused by:
@@ -68,7 +66,7 @@ Caused by:
 
 ---
 
-## C. strace 抓到的 Gunyah ioctl 全序列
+## C. The complete Gunyah ioctl sequence, from strace
 
 ```
 26410 openat(AT_FDCWD, "/dev/gunyah", O_RDWR|O_CLOEXEC) = 7
@@ -80,22 +78,22 @@ Caused by:
 26410 ioctl(9, GSMIOC_DISABLE_NET, 0)                            = -1 ENODEV (No such device)
 ```
 
-对应关系（`'G'` = 0x47）：
+What each call is (`'G'` = 0x47):
 
-| ioctl | 含义 | 结果 |
+| ioctl | Meaning | Result |
 |---|---|---|
 | `_IO('G',0)` | `GUNYAH_CREATE_VM` | ok → VM fd 9 |
 | `_IOW('G',1)` | `GUNYAH_VM_SET_USER_MEM_REGION` | ok |
-| `_IOW('G',4)` | `GUNYAH_VM_ADD_FUNCTION`（vCPU） | ok |
+| `_IOW('G',4)` | `GUNYAH_VM_ADD_FUNCTION` (vCPU) | ok |
 | `_IOW('G',2)` | `GUNYAH_VM_SET_DTB_CONFIG` | ok |
 | `_IOW('G',0xa)` | `GUNYAH_VM_SET_BOOT_CONTEXT` | ok |
 | `_IO('G',3)` = 0x4703 | **`GUNYAH_VM_START`** | **ENODEV** |
 
-> strace 把 `0x4703` 误标为 `GSMIOC_DISABLE_NET`，因为 tty 的这个 ioctl 数值相同。
+> strace mislabels `0x4703` as `GSMIOC_DISABLE_NET` because the tty ioctl has the same numeric value.
 
 ---
 
-## D. 受保护 microdroid VM 完整启动（对照组）
+## D. A protected microdroid VM boots completely (the control)
 
 ```
 $ vm run-microdroid --protected --debug full
@@ -108,11 +106,11 @@ payload is ready
 [   89.893508][    T1] reboot: Power down
 ```
 
-`dmesg | grep gunyah` → 无输出（零错误）。
+`dmesg | grep gunyah` → no output at all (zero errors).
 
 ---
 
-## E. pvmfw 拒绝未签名内核
+## E. pvmfw rejects an unsigned kernel
 
 ```
 [INFO]  pvmfw config version: 1.0
@@ -125,7 +123,7 @@ payload is ready
 
 ---
 
-## F. 缺 `8250.nr_uarts=4` 的表现
+## F. What a missing `8250.nr_uarts=4` looks like
 
 ```
 [    1.152763][    T1] systemd[1]: Expecting device dev-ttyS0.device - /dev/ttyS0...
@@ -135,7 +133,7 @@ payload is ready
 [    1.191565][    T1] systemd[1]: debug-shell.service: Main process exited, code=exited, status=208/STDIN
 ```
 
-加上之后：
+With the parameter added:
 ```
 [  OK  ] Found device dev-ttyS0.device - /dev/ttyS0.
 [  OK  ] Started debug-shell.service - Early root shell on /dev/ttyS0 FOR DEBUGGING ONLY.
@@ -143,7 +141,7 @@ payload is ready
 
 ---
 
-## G. getty 与 debug shell 抢串口导致的崩溃
+## G. The crash caused by getty and the debug shell fighting over the serial port
 
 ```
 [  OK  ] Reached target multi-user.target - Multi-User System.
@@ -154,19 +152,19 @@ payload is ready
 [ERROR] crosvm::sys::linux::vcpu] failed to send VcpuControl: sending on a closed channel
 ```
 
-`[6n` 是终端光标位置查询，`[32766;32766H` 是探测终端尺寸 —— 两个进程在同一个 tty 上反复协商。
-`gh exit reason 3` = `GUNYAH_VCPU_EXIT_PAGE_FAULT`，crosvm 未实现处理。
+`[6n` is a cursor-position query and `[32766;32766H` probes terminal size — two processes negotiating on one tty, repeatedly.
+`gh exit reason 3` = `GUNYAH_VCPU_EXIT_PAGE_FAULT`, which crosvm's backend doesn't implement.
 
-加上 `systemd.mask=serial-getty@ttyS0.service` 后消失。
+Adding `systemd.mask=serial-getty@ttyS0.service` makes it go away.
 
 ---
 
-## H. 平台信息
+## H. Platform information
 
 ```
 $ getprop | grep -i hypervisor
 [ro.boot.hypervisor.protected_vm.supported]: [true]
-# 注意：ro.boot.hypervisor.vm.supported 不存在（这就是①层门禁的依据）
+# Note: ro.boot.hypervisor.vm.supported does not exist at all — that's what layer 1 gates on
 
 $ cat /sys/hypervisor/type
 gunyah
@@ -182,5 +180,5 @@ $ ps -A | grep qcrosvm
 5073 qcrosvm  /system_ext/bin/qcrosvm --disk=/product/vm-system/trustedvm/system.img,label=10,rw=false --vm=trustedvm
 ```
 
-最后一条说明：**Gunyah 本身在这台机器上一直在跑 VM**（高通自己的 trustedvm），
-只是它只认经过授权/签名的 VM。
+That last line matters: **Gunyah has been running a VM on this device all along** (Qualcomm's own trustedvm).
+It simply only accepts authenticated/signed ones.

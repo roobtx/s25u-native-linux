@@ -1,5 +1,7 @@
 # S25U 成功安装原生 Linux
 
+*[English version](README.en.md)*
+
 在**锁 bootloader 的美版 Galaxy S25 Ultra（SM-S938U，骁龙 8 Elite）**上，跑起一个真正的
 **Debian 13 (trixie) 虚拟机** —— 独立内核、systemd、root shell，不是 chroot 也不是 proot。
 
@@ -201,6 +203,7 @@ ERROR crosvm::sys::linux::vcpu] vcpu hit unknown error: Invalid argument (os err
 | `setup.sh` | 准备镜像 + 安装脚本 |
 | `docs/dead-ends.md` | **所有走不通的路**，附完整报错，省得你重走 |
 | `docs/evidence.md` | 关键日志/strace 证据原文 |
+| `README.en.md`, `docs/*.en.md` | 以上三份的英文版 |
 | `posts/hackaday.md` | Hackaday.io 风格的项目帖（英文） |
 | `posts/xda.md` | XDA 论坛风格的帖子（英文） |
 
